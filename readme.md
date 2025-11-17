@@ -9,7 +9,7 @@ usage #python step1_email_mobile_identifier_child_profiles.py
 #3 USE step2_email_identifier_winner_profile.py to modify the winner profiles (Email)
 usage #python step2_email_identifier_winner_profile.py
 
-#3 USE step2_mobile_identifier_winner_profile.py to modify the winner profiles (Mobile)
+#4 USE step2_mobile_identifier_winner_profile.py to modify the winner profiles (Mobile)
 usage #python step2_mobile_identifier_winner_profile.py
 
 
