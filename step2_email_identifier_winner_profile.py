@@ -8,13 +8,15 @@ from glob import glob
 
 # Configuration
 BULK_API_URL = "https://s2s.mparticle.com/v2/bulkevents"
-API_KEY = os.getenv("MPARTICLE_STG_API_KEY")
-API_SECRET = os.getenv("MPARTICLE_STG_API_SECRET")
+
+MPARTICLE_API_KEY = os.getenv("MPARTICLE_API_KEY", "") # set STG, PROD Keys here
+MPARTICLE_API_SECRET = os.getenv("MPARTICLE_API_SECRET", "") # set STG,PROD Secret here
+
 BATCH_SIZE = 100
 ENVIRONMENT = "development" # "development" or "production"
-INPUT_DIR = "output"  # directory with chunked CSV files
+INPUT_DIR = "output/winnerprofiles/chunk"  # directory with chunked CSV files
 LOG_FILE = "logs_bulkevents_winnerprofile.csv"
-DRY_RUN = True  #Set to False to send real requests
+DRY_RUN = False  #Set to False to send real requests
 
 EMAIL_HEADER = "Email_Address"
 MPID_HEADER = "External_ID"
@@ -94,7 +96,7 @@ def send_batch(batch, retries=3, backoff=1):
             response = requests.post(
                 BULK_API_URL,
                 headers=headers,
-                auth=(API_KEY, API_SECRET),
+                auth=(MPARTICLE_API_KEY, MPARTICLE_API_SECRET),
                 json=events_payload
             )
             status = response.status_code

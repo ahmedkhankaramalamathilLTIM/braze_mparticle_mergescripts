@@ -13,8 +13,8 @@ import requests
 # ---------------------------------------
 # CONFIGURATION
 # ---------------------------------------
-CHUNKS_DIR = "output"
-INPUT_GLOB = os.path.join(CHUNKS_DIR, "chunk_part1.csv") # for all files use -> os.path.join(CHUNKS_DIR, "chunk_part*.csv")
+CHUNKS_DIR = "output/childprofiles/chunk"
+INPUT_GLOB = os.path.join(CHUNKS_DIR, "chunk_part*.csv") # for all files use -> os.path.join(CHUNKS_DIR, "chunk_part*.csv")
 
 LOG_DIR = "logs"
 SUMMARY_DIR = "summaries"
@@ -26,8 +26,8 @@ EVENTS_BASE_URL = "https://s2s.mparticle.com/v2/events"
 MPARTICLE_API_KEY = os.getenv("MPARTICLE_API_KEY", "") # set STG, PROD Keys here
 MPARTICLE_API_SECRET = os.getenv("MPARTICLE_API_SECRET", "") # set STG,PROD Secret here
 
-ENVIRONMENT = "development" #change production for production run
-DRY_RUN = True # change it to False for Real time run
+ENVIRONMENT = "production" #change production for production run
+DRY_RUN = False # change it to False for Real time run
 REQUEST_TIMEOUT = 20
 RATE_LIMIT_DELAY = 0.2
 MAX_RETRIES = 3
@@ -79,6 +79,16 @@ def retryable_post(url: str, auth, json_payload: dict, dry_run=False):
             resp = requests.post(url, auth=auth, json=json_payload, timeout=REQUEST_TIMEOUT)
             if resp.status_code >= 200 and resp.status_code < 300:
                 return resp, attempt, None
+            elif resp.status_code == 400:
+                if(resp.json().get("Errors", [{}])[0].get("message") == "MpId doesn't exist"):
+                    json_payload["environment"] = "development"
+                    resp, attempt, last_err = retryable_post(url, auth, json_payload, dry_run)
+                elif(resp.json().get("Errors", [{}])[0].get("message") == "ToModifyIdentities is empty."):
+                   for ident in json_payload["identity_changes"]:
+                    if ident["identity_type"] == "mobile_number":
+                        ident["old_value"] = None
+                    resp, attempt, last_err = retryable_post(url, auth, json_payload, dry_run)
+               
 
             last_err = f"Status {resp.status_code}: {resp.text}"
 
@@ -96,15 +106,36 @@ def retryable_post(url: str, auth, json_payload: dict, dry_run=False):
 
     return None, attempt, last_err
 
-
-def build_modify_payload(email, phone):
+def build_modify_payload(email, phone, environment):
+    # Normalize blanks → None
+    email = email.strip() if email and email.strip() != "" else None
+    phone = phone.strip() if phone and phone.strip() != "" else None
     changes = []
-    if email:
-        changes.append({"old_value": email, "new_value": None, "identity_type": "email"})
-    if phone:
-        changes.append({"old_value": phone, "new_value": None, "identity_type": "mobile_number"})
+    if email is None and phone is None:
+        return {
+            "environment": environment,
+            "identity_changes": []
+        }
+    # Add email only if not None
+    if email is not None:
+        changes.append({
+            "old_value": email,
+            "new_value": None,
+            "identity_type": "email"
+        })
 
-    return {"environment": ENVIRONMENT, "identity_changes": changes}
+    # Add phone only if not None
+    if phone is not None:
+        changes.append({
+            "old_value": phone,
+            "new_value": None,
+            "identity_type": "mobile_number"
+        })
+
+    return {
+        "environment": environment,
+        "identity_changes": changes
+    }
 
 
 def build_events_payload(mpid):
@@ -157,7 +188,7 @@ def process_file(file_path: str, dry_run=True, rate_limit=RATE_LIMIT_DELAY) -> s
     auth = make_auth()
     results = []
 
-    with open(file_path, newline="", encoding="utf-8") as f:
+    with open(file_path, newline="",encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         row_num = 0
 
@@ -187,7 +218,7 @@ def process_file(file_path: str, dry_run=True, rate_limit=RATE_LIMIT_DELAY) -> s
             # Step 1 — Modify API
             # ---------------------------
             modify_url = f"{IDENTITY_BASE_URL}/{mpid}/modify"
-            modify_payload = build_modify_payload(email, phone)
+            modify_payload = build_modify_payload(email, phone, ENVIRONMENT)
 
             if dry_run:
                 logger.info(f"[DRY-RUN] Modify → {modify_payload}")
@@ -283,7 +314,7 @@ def main():
     dry_run = DRY_RUN
     rate_limit = RATE_LIMIT_DELAY
 
-    master_log.info("=== START STEP1 For EMAIL IDENTIFIER  CHILD PROFILES RUN (NO PARALLEL) ===")
+    master_log.info("=== START STEP1 For EMAIL/Mobile IDENTIFIER  CHILD PROFILES RUN (NO PARALLEL) ===")
     master_log.info(f"Chunks dir: {CHUNKS_DIR}")
     master_log.info(f"dry_run={dry_run}")
 
@@ -300,7 +331,7 @@ def main():
         summary_files.append(summary_path)
 
     combine_summaries(summary_files)
-    master_log.info("=== STEP1 For EMAIL IDENTIFIER  CHILD PROFILES RUN COMPLETE ===")
+    master_log.info("=== STEP1 For EMAIL/Mobile IDENTIFIER  CHILD PROFILES RUN COMPLETE ===")
 
 
 if __name__ == "__main__":
